@@ -19,6 +19,7 @@ module.exports = {
   
   // AI Service Configuration
   OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
+  NURU_AI_BASE_URL: process.env.NURU_AI_BASE_URL || 'http://18.206.91.76:8000',
   CACHE_TTL: parseInt(process.env.CACHE_TTL || '3600'), // 1 hour default
   
   // Rate Limiting

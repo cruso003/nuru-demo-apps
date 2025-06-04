@@ -1,6 +1,8 @@
 const express = require('express');
 const Joi = require('joi');
 const crypto = require('crypto');
+const { default: fetch } = require('node-fetch'); // For making HTTP requests to Nuru AI
+const FormData = require('form-data');
 const { authMiddleware, rateLimitMiddleware } = require('../middleware/auth');
 const { asyncHandler } = require('../middleware/errorHandler');
 const redisService = require('../services/redis');
@@ -111,60 +113,269 @@ async function trackApiUsage(userId, endpoint, cached = false, cost = 0) {
   }
 }
 
-// Mock AI service calls (replace with actual Nuru AI integration)
+// Real Nuru AI service integration
+const NURU_AI_BASE_URL = config.NURU_AI_BASE_URL;
+const NURU_AI_TIMEOUT = 60000; // 60 seconds timeout to handle AI processing time
+
 async function callNuruAI(endpoint, request) {
-  // Simulate AI API call delay
-  await new Promise(resolve => setTimeout(resolve, Math.random() * 2000 + 500));
-  
-  // Mock responses based on endpoint
-  switch (endpoint) {
-    case 'chat':
-      return {
-        response: `This is a mock AI response to: "${request.message}". In a real implementation, this would be the actual Nuru AI response.`,
-        usage: { promptTokens: 50, completionTokens: 100, totalTokens: 150 },
-        model: 'nuru-chat-v1'
-      };
-      
-    case 'image-analysis':
-      return {
-        analysis: `Mock image analysis for prompt: "${request.prompt}". The image appears to show educational content.`,
-        confidence: 0.85,
-        detectedElements: ['text', 'diagram', 'educational_content'],
-        usage: { inputTokens: 100, outputTokens: 80 }
-      };
-      
-    case 'voice-analysis':
-      return {
-        transcript: 'Mock transcription of the audio',
-        pronunciationScore: 0.78,
-        feedback: 'Generally good pronunciation with room for improvement on certain sounds.',
-        detailedAnalysis: {
-          fluency: 0.8,
-          accuracy: 0.75,
-          completeness: 0.9
-        },
-        usage: { audioSeconds: 10, processingTime: 2.5 }
-      };
-      
-    case 'lesson-generation':
-      return {
-        lesson: {
-          title: `${request.topic} - ${request.difficulty} Level`,
-          duration: request.duration,
-          sections: [
-            { type: 'introduction', content: 'Mock lesson introduction', estimatedTime: 5 },
-            { type: 'content', content: 'Mock main lesson content', estimatedTime: 20 },
-            { type: 'practice', content: 'Mock practice exercises', estimatedTime: 5 }
-          ],
-          objectives: ['Mock learning objective 1', 'Mock learning objective 2'],
-          resources: ['Mock resource 1', 'Mock resource 2']
-        },
-        usage: { generationTime: 3.2, complexity: 'medium' }
-      };
-      
-    default:
-      throw new Error(`Unknown AI endpoint: ${endpoint}`);
+  try {
+    let response;
+    
+    switch (endpoint) {
+      case 'chat':
+        response = await makeNuruAPICall('/api/chat', {
+          text: request.message,
+          language: request.context?.language || 'en',
+          response_format: 'text',
+          context: request.context?.subject || '',
+          ...(request.context?.userProfile && {
+            user_context: {
+              difficulty: request.context.userProfile.difficulty,
+              language: request.context.userProfile.language
+            }
+          })
+        });
+        
+        return {
+          response: response.response || response.text || '',
+          text: response.text || response.response || '',
+          usage: {
+            promptTokens: response.usage?.tokens || 50,
+            completionTokens: response.usage?.tokens || 100,
+            totalTokens: response.usage?.tokens || 150
+          },
+          model: response.model_info?.phi || 'nuru-chat-v1'
+        };
+        
+      case 'image-analysis':
+        // For image analysis, we'll use the multimodal process endpoint
+        const formData = new FormData();
+        formData.append('text', request.prompt);
+        
+        if (request.imageUrl) {
+          // Download image from URL and add to form data
+          const imageResponse = await fetch(request.imageUrl);
+          const imageBlob = await imageResponse.blob();
+          formData.append('image', imageBlob, 'image.jpg');
+        } else if (request.imageBase64) {
+          // Convert base64 to blob
+          const buffer = Buffer.from(request.imageBase64.split(',')[1], 'base64');
+          const blob = new Blob([buffer], { type: 'image/jpeg' });
+          formData.append('image', blob, 'image.jpg');
+        }
+        
+        formData.append('mode', 'multimodal');
+        formData.append('task', request.context?.analysisType || 'educational');
+        
+        response = await makeNuruAPICall('/api/process', formData, true);
+        
+        return {
+          analysis: response.text || response.result || 'Analysis completed',
+          confidence: response.confidence || 0.85,
+          detectedElements: response.detected_elements || ['educational_content'],
+          usage: {
+            inputTokens: response.usage?.tokens || 100,
+            outputTokens: response.usage?.tokens || 80
+          }
+        };
+        
+      case 'voice-analysis':
+        const audioFormData = new FormData();
+        
+        if (request.audioUrl) {
+          // Download audio from URL
+          const audioResponse = await fetch(request.audioUrl);
+          const audioBlob = await audioResponse.blob();
+          audioFormData.append('audio', audioBlob, 'audio.wav');
+        } else if (request.audioBase64) {
+          // Convert base64 to blob
+          const buffer = Buffer.from(request.audioBase64.split(',')[1], 'base64');
+          const blob = new Blob([buffer], { type: 'audio/wav' });
+          audioFormData.append('audio', blob, 'audio.wav');
+        }
+        
+        audioFormData.append('language', request.language || 'en');
+        audioFormData.append('format', 'wav');
+        
+        // First transcribe the audio
+        response = await makeNuruAPICall('/api/transcribe', audioFormData, true);
+        
+        // For pronunciation analysis, we need the expected text
+        const transcript = response.text || response.transcription || '';
+        const expectedText = request.context?.expectedText || '';
+        
+        // Calculate basic pronunciation score (in real implementation, this would be more sophisticated)
+        let pronunciationScore = 0.5; // Default
+        if (expectedText && transcript) {
+          const similarity = calculateSimilarity(transcript.toLowerCase(), expectedText.toLowerCase());
+          pronunciationScore = Math.max(0.1, Math.min(1.0, similarity));
+        }
+        
+        return {
+          transcript,
+          pronunciationScore,
+          feedback: generatePronunciationFeedback(pronunciationScore),
+          detailedAnalysis: {
+            fluency: pronunciationScore * 0.9 + 0.1,
+            accuracy: pronunciationScore,
+            completeness: transcript.length > 0 ? 0.9 : 0.1
+          },
+          usage: {
+            audioSeconds: response.duration || 5,
+            processingTime: response.processing_time || 2
+          }
+        };
+        
+      case 'lesson-generation':
+        const lessonPrompt = `Generate a ${request.difficulty} level lesson about "${request.topic}" that takes approximately ${request.duration} minutes. 
+        Format: ${request.format}. 
+        ${request.learnerProfile ? `Learner context: Age ${request.learnerProfile.age || 'adult'}, interests: ${request.learnerProfile.interests?.join(', ') || 'general'}` : ''}
+        
+        Please provide a structured lesson with clear sections, objectives, and practical activities. Focus on Kpelle language and culture when relevant.`;
+        
+        response = await makeNuruAPICall('/api/chat', {
+          text: lessonPrompt,
+          language: request.language || 'en',
+          response_format: 'text',
+          context: `lesson_generation_${request.topic}_${request.difficulty}`
+        });
+        
+        // Parse the lesson content (in a real implementation, you might want more structured output)
+        const lessonContent = response.response || response.text || '';
+        
+        return {
+          lesson: {
+            title: `${request.topic} - ${request.difficulty.charAt(0).toUpperCase() + request.difficulty.slice(1)} Level`,
+            duration: request.duration,
+            content: lessonContent,
+            sections: parseLessonSections(lessonContent),
+            objectives: extractObjectives(lessonContent),
+            resources: extractResources(lessonContent)
+          },
+          usage: {
+            generationTime: response.processing_time || 3.0,
+            complexity: request.difficulty,
+            tokens: response.usage?.tokens || 200
+          }
+        };
+        
+      default:
+        throw new Error(`Unknown AI endpoint: ${endpoint}`);
+    }
+  } catch (error) {
+    logger.error('Nuru AI service error', { endpoint, error: error.message });
+    throw new Error(`Nuru AI service failed: ${error.message}`);
   }
+}
+
+// Helper function to make API calls to Nuru AI
+async function makeNuruAPICall(endpoint, data, isFormData = false) {
+  const url = `${NURU_AI_BASE_URL}${endpoint}`;
+  
+  const options = {
+    method: 'POST',
+    timeout: NURU_AI_TIMEOUT,
+    headers: {}
+  };
+  
+  if (isFormData) {
+    options.body = data;
+    // Don't set Content-Type for FormData, let fetch set it automatically
+  } else {
+    options.headers['Content-Type'] = 'application/json';
+    options.body = JSON.stringify(data);
+  }
+  
+  const response = await fetch(url, options);
+  
+  if (!response.ok) {
+    throw new Error(`Nuru AI API error: ${response.status} ${response.statusText}`);
+  }
+  
+  return await response.json();
+}
+
+// Helper functions for lesson parsing
+function parseLessonSections(content) {
+  // Simple parsing - in production, you'd want more sophisticated parsing
+  const sections = [];
+  const lines = content.split('\n');
+  let currentSection = null;
+  
+  for (const line of lines) {
+    if (line.toLowerCase().includes('introduction')) {
+      currentSection = { type: 'introduction', content: '', estimatedTime: 5 };
+      sections.push(currentSection);
+    } else if (line.toLowerCase().includes('main') || line.toLowerCase().includes('content')) {
+      currentSection = { type: 'content', content: '', estimatedTime: 20 };
+      sections.push(currentSection);
+    } else if (line.toLowerCase().includes('practice') || line.toLowerCase().includes('exercise')) {
+      currentSection = { type: 'practice', content: '', estimatedTime: 5 };
+      sections.push(currentSection);
+    } else if (currentSection) {
+      currentSection.content += line + '\n';
+    }
+  }
+  
+  // Default sections if parsing fails
+  if (sections.length === 0) {
+    return [
+      { type: 'introduction', content: content.substring(0, 200) + '...', estimatedTime: 5 },
+      { type: 'content', content: content, estimatedTime: 20 },
+      { type: 'practice', content: 'Practice exercises based on the lesson content.', estimatedTime: 5 }
+    ];
+  }
+  
+  return sections;
+}
+
+function extractObjectives(content) {
+  const objectives = [];
+  const lines = content.split('\n');
+  
+  for (const line of lines) {
+    if (line.toLowerCase().includes('objective') || line.toLowerCase().includes('goal') || line.toLowerCase().includes('learn')) {
+      objectives.push(line.trim());
+    }
+  }
+  
+  return objectives.length > 0 ? objectives.slice(0, 5) : ['Complete the lesson activities', 'Understand key concepts'];
+}
+
+function extractResources(content) {
+  const resources = [];
+  const lines = content.split('\n');
+  
+  for (const line of lines) {
+    if (line.toLowerCase().includes('resource') || line.toLowerCase().includes('reference') || line.toLowerCase().includes('link')) {
+      resources.push(line.trim());
+    }
+  }
+  
+  return resources.length > 0 ? resources.slice(0, 3) : ['Lesson materials', 'Practice exercises'];
+}
+
+// Simple text similarity calculation for pronunciation scoring
+function calculateSimilarity(text1, text2) {
+  const words1 = text1.split(' ');
+  const words2 = text2.split(' ');
+  const maxLength = Math.max(words1.length, words2.length);
+  
+  if (maxLength === 0) return 1;
+  
+  let matches = 0;
+  for (let i = 0; i < Math.min(words1.length, words2.length); i++) {
+    if (words1[i] === words2[i]) matches++;
+  }
+  
+  return matches / maxLength;
+}
+
+function generatePronunciationFeedback(score) {
+  if (score >= 0.8) return 'Excellent pronunciation! Very clear and accurate.';
+  if (score >= 0.6) return 'Good pronunciation with minor areas for improvement.';
+  if (score >= 0.4) return 'Acceptable pronunciation. Focus on clarity and accuracy.';
+  return 'Pronunciation needs improvement. Practice the sounds more carefully.';
 }
 
 // AI Chat endpoint

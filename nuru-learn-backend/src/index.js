@@ -130,6 +130,9 @@ async function startServer() {
       logger.info(`🔗 Health check: http://localhost:${config.PORT}/health`);
     });
 
+    // Set server timeout to handle long AI processing times
+    server.timeout = 120000; // 2 minutes timeout for AI requests
+
     // Graceful shutdown
     const gracefulShutdown = (signal) => {
       logger.info(`Received ${signal}. Starting graceful shutdown...`);
