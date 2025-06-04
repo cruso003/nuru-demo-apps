@@ -1,0 +1,37 @@
+{
+  "title": "Basic Kpelle Greetings", 
+  "description": "Learn essential greetings in Kpelle",
+  "content": {
+    "objective": "Master basic greeting phrases",
+    "vocabulary": ["Kah kah", "Kwee", "I ni kah"],
+    "examples": [
+      {"kpelle": "Kah kah", "english": "Hello"},
+      {"kpelle": "I ni kah", "english": "Good morning"}
+    ]
+  },
+  "difficulty_level": "beginner",
+  "estimated_duration_minutes": 15,
+  "language_code": "en",
+  "tags": ["greetings", "basic"],
+  "learning_objectives": [
+    "Understand basic Kpelle greeting structure",
+    "Pronounce common greetings correctly",
+    "Use appropriate greetings in context"
+  ],
+  "cultural_context": {
+    "importance": "Greetings are essential in Kpelle culture and show respect",
+    "timing": "Different greetings are used at different times of day",
+    "gestures": "Often accompanied by handshakes or other gestures"
+  },
+  "kpelle_content": {
+    "pronunciation_guide": {
+      "Kah kah": "KAH-kah (with falling tone)",
+      "I ni kah": "ee-nee-KAH (rising tone on last syllable)"
+    },
+    "cultural_notes": [
+      "Always greet elders first",
+      "Eye contact shows respect",
+      "Respond with enthusiasm"
+    ]
+  }
+}

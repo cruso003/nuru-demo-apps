@@ -1,0 +1,15 @@
+{
+  "kpelle_term": "Kah kah",
+  "english_translation": "Hello",
+  "pronunciation": "KAH-kah",
+  "part_of_speech": "interjection",
+  "category": "greetings",
+  "difficulty_level": "beginner",
+  "usage_examples": [
+    {
+      "kpelle": "Kah kah, I ni kah ke?",
+      "english": "Hello, how are you?"
+    }
+  ],
+  "cultural_context": "Standard greeting used throughout the day"
+}

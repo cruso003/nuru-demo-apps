@@ -18,6 +18,10 @@ const progressRoutes = require('./routes/progress');
 const aiRoutes = require('./routes/ai');
 const streaksRoutes = require('./routes/streaks');
 const achievementsRoutes = require('./routes/achievements');
+const contentRoutes = require('./routes/content');
+const vocabularyRoutes = require('./routes/vocabulary');
+const recommendationsRoutes = require('./routes/recommendations');
+const preferencesRoutes = require('./routes/preferences');
 
 // Import middleware
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
@@ -92,6 +96,10 @@ app.use('/api/progress', authMiddleware, progressRoutes);
 app.use('/api/ai', authMiddleware, aiRoutes);
 app.use('/api/streaks', authMiddleware, streaksRoutes);
 app.use('/api/achievements', authMiddleware, achievementsRoutes);
+app.use('/api/content', authMiddleware, contentRoutes);
+app.use('/api/vocabulary', authMiddleware, vocabularyRoutes);
+app.use('/api/recommendations', authMiddleware, recommendationsRoutes);
+app.use('/api/preferences', authMiddleware, preferencesRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {
