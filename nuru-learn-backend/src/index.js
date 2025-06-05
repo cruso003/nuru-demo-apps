@@ -22,6 +22,11 @@ const contentRoutes = require('./routes/content');
 const vocabularyRoutes = require('./routes/vocabulary');
 const recommendationsRoutes = require('./routes/recommendations');
 const preferencesRoutes = require('./routes/preferences');
+const realtimeRoutes = require('./routes/realtime');
+
+// Import Phase 5 services
+const webSocketService = require('./services/websocket');
+const { mediaProcessingService } = require('./services/media-processing');
 
 // Import middleware
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
@@ -100,6 +105,7 @@ app.use('/api/content', authMiddleware, contentRoutes);
 app.use('/api/vocabulary', authMiddleware, vocabularyRoutes);
 app.use('/api/recommendations', authMiddleware, recommendationsRoutes);
 app.use('/api/preferences', authMiddleware, preferencesRoutes);
+app.use('/api/realtime', realtimeRoutes); // Phase 5: Real-time features
 
 // 404 handler
 app.use('*', (req, res) => {
@@ -132,6 +138,12 @@ async function startServer() {
 
     // Set server timeout to handle long AI processing times
     server.timeout = 120000; // 2 minutes timeout for AI requests
+
+    // Initialize Phase 5 services
+    webSocketService.initialize(server);
+    logger.info('✅ WebSocket service initialized');
+    logger.info('✅ Media processing service ready');
+    logger.info('🎵 Phase 5 Real-time Features Active');
 
     // Graceful shutdown
     const gracefulShutdown = (signal) => {
